@@ -1,1 +1,1 @@
-# Резизы plastinka.ru
+# Релизы plastinka.ru

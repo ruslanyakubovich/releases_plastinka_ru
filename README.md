@@ -1,1 +1,1 @@
-# releases_plastinka_ru
+# Резизы plastinka.ru

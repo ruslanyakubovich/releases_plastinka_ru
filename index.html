@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en-us">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">  
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+  <title>Plastinka</title>
+  <style>
+    :root {
+      --rwidth: 220px;
+      --color2: #779ba5;
+    }
+
+    .warning,
+    .error {
+      color: red
+    }
+
+    .error {
+      background-color: yellow
+    }
+
+
+    body {
+      display: flex;
+      flex-direction: column;
+
+      background: #536c73;
+      font-family: "Root UI", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 18px;
+      color: #fff;
+    }
+
+    body * {
+      margin: 0;
+      padding: 0;
+    }
+
+    .main {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1.logo {
+      background: left / contain no-repeat url(plastinka.png);
+      color: transparent;
+    }
+
+    h1 {
+      size: 1.3em;
+    }
+
+    h2 {
+      size: 1em;
+      margin: 1em 0;
+    }
+
+
+    .grid {}
+
+    .grid .releas {
+      display: inline-flex;
+      flex-wrap: wrap;
+      margin: 0 1em 3em 0;
+      width: var(--rwidth);
+    }
+
+    .releas .img {
+      width: var(--rwidth);
+      height: var(--rwidth);
+      background: no-repeat center / contain url() #446169;
+    }
+
+    .releas .album {
+      width: 100%;
+    }
+
+    .releas .artist {
+      font-size: .8em;
+      width: 100%;
+    }
+
+
+    ul#sel_genre {
+      list-style: none;
+      font-size: .85em;
+    }
+
+    ul#sel_genre li {
+      display: inline-block;
+      margin: 0 .5em .3em 0;
+    }
+
+    ul#sel_genre li label {
+      cursor: pointer;
+    }
+
+    ul#sel_genre li label span {
+      padding: 0 .3em;
+    }
+
+    ul#sel_genre li input[type=radio] {
+      display: none;
+    }
+
+    ul#sel_genre li input[type=radio]:checked+span {
+      background: var(--color2);
+      border-color: var(--color2);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="main">
+    <h1 class="logo">Plastinka</h1>
+    <h2>Предстоящие релизы</h2>
+    <div id="r_new" class="grid"></div>
+    <div>
+      <ul id="sel_genre">
+        <li>
+          <label>
+            <input type="radio" name="genre" value="" checked><span>Все жанры</span>
+          </label>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <h2>Все релизы</h2>
+  <div id="r_all" class="grid"></div>
+
+  <script src="jswasm/sqlite3.js"></script>
+  <!--script src="r.js"></script-->
+
+  <script>
+
+    (function () {
+
+      function logHtml(cssClass, ...args) {
+        const ln = document.createElement('div');
+        if (cssClass) ln.classList.add(cssClass);
+        ln.append(document.createTextNode(args.join(' ')));
+        document.body.append(ln);
+        console.log(args.join(' '))
+      };
+
+      // Релиз
+      function add(d, o) {
+        //console.log(args);
+        const ln = document.createElement('div');
+        const img = document.createElement('div');
+        const al = document.createElement('p');
+        const ar = document.createElement('p');
+        img['style'] = `background-image: url(${getUrlImg(o.album_id)});`;
+        img.classList.add('img');
+        al.classList.add('album');
+        ar.classList.add('artist');
+
+        al.innerText = o.album_name;
+        ar.innerText = o.artist_name;
+
+        ln.append(img);
+        ln.append(al);
+        ln.append(ar);
+        ln.classList.add('releas');
+        d.append(ln);
+      }
+
+      // фильтр жанров
+      function newGenre(g) {
+        li = document.createElement('li');
+        li.innerHTML = '<label>' +
+          `<input type="radio" name="genre" value="${g.genre_name}">` +
+          '<span>' + g.genre_name + '</span>' +
+          '</label>';
+        return li;
+      }
+
+      const div_all = document.querySelector('#r_all');
+      const div_new = document.querySelector('#r_new');
+      const li_sel_genre = document.querySelector('#sel_genre');
+
+      const log = (...args) => logHtml('', ...args);
+      const warn = (...args) => logHtml('warning', ...args);
+      const error = (...args) => logHtml('error', ...args);
+
+      const addNew = (args) => add(div_new, args);
+      const addAll = (args) => add(div_all, args);
+      const getUrlImg = (id) => { return `/img/${id}.png` } 
+
+      const demo1 = function (sqlite3, dbUrl, immutable = false) {
+        // https://learn.javascript.ru/fetch-progress 
+        fetch(dbUrl)
+          .then(res => res.arrayBuffer())
+          .then(arrayBuffer => {
+            if (!immutable) {
+              arrayBuffer.resizeable = true;
+            }
+            const p = sqlite3.wasm.allocFromTypedArray(arrayBuffer);
+            const db = new sqlite3.oo1.DB();
+            let deserialize_flags =
+              sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE;
+            if (!immutable) {
+              deserialize_flags |= sqlite3.capi.SQLITE_DESERIALIZE_RESIZEABLE;
+            }
+            const rc = sqlite3.capi.sqlite3_deserialize(
+              db.pointer, 'main', p, arrayBuffer.byteLength, arrayBuffer.byteLength, deserialize_flags);
+            db.checkRc(rc);
+
+            // Предстоящие релизы
+            db.exec({
+              sql: "select * from albums a where a.sales_start_date >= date() order by a.sales_start_date",
+              rowMode: 'object', // 'array' (default), 'object', or 'stmt'
+              callback: function (row) {
+                addNew(row);
+              }.bind({ counter: 0 })
+            });
+
+            // жанры
+            db.exec({
+              sql: "select a.genre_name, count(*) as c from albums a group by a.genre_name  ORDER by c desc",
+              rowMode: "object",
+              callback: function (row) { 
+                li_sel_genre.append(newGenre(row));
+              }.bind({ counter: 0 })
+            })
+
+            // Все релизы
+            db.exec({
+              sql: "select * from albums a where a.sales_start_date < date() order by a.sales_start_date desc limit 300",
+              rowMode: 'object', // 'array' (default), 'object', or 'stmt'
+              callback: function (row) {
+                addAll(row);
+              }.bind({ counter: 0 })
+            });
+            
+          });
+      };
+
+
+
+      globalThis.sqlite3InitModule({
+        /* We can redirect any stdout/stderr from the module like so, but
+           note that doing so makes use of Emscripten-isms, not
+           well-defined sqlite APIs. */
+        print: log,
+        printErr: error
+      }).then(function (sqlite3) {
+        //console.log('sqlite3 =',sqlite3);
+        //log("Done initializing. Running demo...");
+
+        try {
+          demo1(sqlite3, 'my_albums.db');
+        } catch (e) {
+          error("Exception:", e.message);
+        }
+      });
+    })();
+
+  </script>
+</body>
+
+</html>
